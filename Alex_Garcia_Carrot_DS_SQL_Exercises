@@ -5,7 +5,7 @@ Author: Alex Garcia / alex.garcia.ds.sf@gmail.com
 Notes:
 - I'm using a free editor that runs on PostgreSQL for this
 - I've erred on the side of being extra verbose in my notes to show my thought process
-- In certain places I reference basic data quality checks I ran, I've removed the code for some of these for readability. 
+- In certain places I reference basic data quality checks I ran, I've removed the code for some of these for readability 
 - I'm using a "CTE" style of SQL for readability (subqueries are faster, but these datasets aren't large) 
 ***********************************************************************************************************************/
 
@@ -205,7 +205,6 @@ employee_age_cat as (
               end as age_category
   from employee_age_years
 ),
--- Apply filters for year = 2022, status = 'Approved'
 reimbursement_filtered AS (
   SELECT "Employee_id",
   		 CAST(REPLACE("Amount_usd", ',', '') AS INTEGER) AS amount   
