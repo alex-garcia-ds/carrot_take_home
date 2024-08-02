@@ -1,0 +1,231 @@
+/***********************************************************************************************************************
+Carrot - Data Science Take-Home Assignment
+Author: Alex Garcia / alex.garcia.ds.sf@gmail.com
+
+Notes:
+- I'm using a free editor that runs on PostgreSQL for this
+- I've erred on the side of being extra verbose in my notes to show my thought process
+- In certain places I reference basic data quality checks I ran, I've removed the code for some of these for readability. 
+- I'm using a "CTE" style of SQL for readability (subqueries are faster, but these datasets aren't large) 
+***********************************************************************************************************************/
+
+/* Clarifying Questions
+
+Please come up with 1-2 questions that you would ask to learn more about this data set that you
+believe would further assist you in analyzing the data.
+
+1. Has this data already been cleaned or pre-processed for analysis?
+
+  If not, then I would spend more time checking for data errors (e.g. checking the distributions of numeric variables
+  for outliers) and potentially reach out to an SME or data engineer to see if there are any known problems. 
+
+2. Does this dataset contain any sensitive data (e.g. MBD, HFALD, or location data) that might require special handling?
+
+  If it does, I want to be sure I'm respecting any policies that apply. For example, make sure that I'm filing an
+  analysis plan and seeking approval before retrieving the data and only using approved tools to manipulate the data.
+*/
+
+
+/* SQL Tasks 
+
+1. Come up with 1 query you might write to explore the properties of this data set:
+ 
+ I did a quick visual check of the datasets and noticed the "Sex" field has missing values, which could make it difficult
+ to calculate reliable statistics later on. I'd use the query below to investigate this further. 
+ 
+ Before starting, I did a quick check to see if there are any duplicate rows on Employee_id: there are not
+-- SELECT COUNT(*),COUNT(DISTINCT "Employee_id") FROM employee;
+ */
+
+-- Method: 
+	-- Goal: calculate the number and proportion of employees in each sex category (I'll call missings "Unknown")
+  -- Calculate the denominator (number of employees), then the numerator (number of employees in each sex category)
+	-- Combine the two to calculate the proportion (of total) in each category
+
+-- Results / Notes:
+	-- About 19% of the values in the "Sex" field are "Unknown"
+  -- We have very few people (n = 18) in the "Intersex" category overall
+  -- Both issues could effect our ability to calculate certain kinds of statistics on this data 
+
+WITH total_rows AS (
+  SELECT COUNT(*) AS total_employees
+  FROM employee
+), 
+total_by_category AS (
+  SELECT DISTINCT "Sex",
+  	     COUNT(*) as cat_total
+  FROM employee 
+  GROUP BY 1
+)
+SELECT t2."total_employees",
+	   case when t1."Sex" = '' then 'UNKNOWN'
+       else t1."Sex"
+       end as sex,
+       t1."cat_total" AS n_employees,
+       ROUND(t1."cat_total" * 1.0 / t2."total_employees", 2) AS prop_of_total
+from total_by_category as t1
+cross join total_rows AS t2
+order by 3 DESC; 
+
+/*
+2. Write a query to list the top 5 employees with the highest total reimbursement amount. 
+ 	
+   The question doesn't specify approved claims or not (as question 4 does) - my best guess is that we're probably
+   most interested in approved claims since this equates to "actual money spent." This query can be quickly converted
+   to show highest totals for all claims - see note below. 
+
+   Additionally, a quick check shows there are more employees in the employee table than in the reimbursement table:
+   
+   SELECT "Employee_id" from employee where "Employee_id" NOT IN (select "Employee_id" from reimbursement);
+   SELECT "Employee_id" from reimbursement where "Employee_id" NOT IN (select "Employee_id" from employee);
+   
+   It makes sense that some employees who are "on file" may not have made any claims. Alternatively, it could mean
+   the reimbursement table is missing data. In a real business setting I'd double check this with engineering. 
+*/
+
+-- Method:
+	-- Use the reimbursement table to filter and sum the total claims amount, grouped on distinct Employee_id
+  -- Amount_usd contains commas, we'll need to strip them out and convert it to an INTEGER type first
+  -- Sort by total reimbursement descending, limit to 5 top entries
+  -- Commenting out the "WHERE" clause gives the total for "all claims" regardless of status
+
+-- Results / Notes:
+	-- Employee 3 had the highest total for appproved claims ($11,574), followed by employees 168, 375, 577, and 488.
+  -- There are some slight differences when we include all claims (employees 624 and 509 take the 4th and 5th slots). 
+
+SELECT DISTINCT "Employee_id",
+       SUM(CAST(REPLACE("Amount_usd", ',', '') AS INTEGER)) AS total_reimbursement
+FROM reimbursement
+WHERE "Status" = 'Approved'
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 5;
+
+/*
+3. Write a query to find the average, median, min, and max reimbursement amount (Amount_usd) of Apple employees.
+ 	
+   Similar to question 2, I'm assuming we're interested in approved claims only - removing the "AND" clause below
+   removes this restriction.
+*/
+
+-- Method:
+	-- Goal: calculate multiple statistics for reimbursement
+    -- Use the code from above to convert Amount_usd to an INTEGER, then calculate the statistics
+    -- Use the grand average (vs. weighted, more robust to outliers) since we have plenty of data (n = 999 claims) 
+    -- The median is also robust to outliers
+
+-- Results / Notes
+	-- The grand average ($2,137.43) and the median ($2,059) are close to each other; likely fairly even distribution.
+
+with reimbursement_int AS (
+  SELECT "Employee_id",
+  		 CAST(REPLACE("Amount_usd", ',', '') AS INTEGER) AS amount,
+  		 "Status"
+  from reimbursement
+)
+SELECT t3."Name" AS company_name,
+       ROUND(AVG(t1."amount"), 2) AS avg_reimbursement,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t1."amount") AS median_reimbursement,
+       ROUND(MAX(t1."amount"), 2) as min_reimbursement,
+	   ROUND(MIN(t1."amount"), 2) as max_reimbursement
+FROM reimbursement_int AS t1
+inner join employee AS t2 on t1."Employee_id" = t2."Employee_id" -- All employee_ids are present in employee table
+inner join company AS t3 ON t2."Company_id" = t3."Company_id" -- We want only the intersection of these tables 
+WHERE t3."Name" = 'Apple'
+  AND t1."Status" = 'Approved'
+GROUP BY 1
+ORDER BY 2 DESC;
+
+/*
+4. Write a query to reflect aggregate data grouped by Sex and Age Bands, reflect the count of employees, and
+the average reimbursement amount (Amount_usd) for 2022 approved reimbursements in Rhode Island only.
+
+I'm going to do multiple queries here to investigate "age" a little before I define age bands. The final query 
+at the bottom is the one that answers this question. 
+*/
+
+-- Data Cleaning Method:
+	-- First, do some data checks: investigate the distribution of age, then define age bands
+  -- Then check the number of total claims that fit the criteria; if it's low, consider using weighted average
+
+-- Data Cleaning Results / Notes:
+	-- I'm concerned with data quality here: some entries make no sense (e.g. IVF for a 7 y.o. or preservation for an 81 y.o.)
+	-- In a real business situation I would stop here and consult with an SME to address these errors
+  -- Without more context, I'll err on leaving the data in but labeling the extremes as a potential error
+    
+  -- There are critical milestones for fertility care in the 30-40 age range (e.g. age 35 for women)
+	-- We have a lot of potential age x sex categories, I want to balance granularity with readability
+  -- There are only n=27 claims left after filtering for year, state, and status
+
+-- Data Cleaning Conclusions
+  -- Let's create age bands of ~10 years, offset so a break falls at age 35, with combined categories for <18, 76+
+  -- Let's use a weighted average to reduce the influence of any outliers since there are so few claims after filtering
+
+WITH age_years AS (
+  SELECT "Employee_id",
+         EXTRACT(year from current_date) - EXTRACT(YEAR FROM TO_DATE("Date_of_birth", 'MM/DD/YYYY')) AS age_years
+  from employee
+)
+SELECT MIN("age_years") as min_age,
+	   max("age_years") as max_age,
+       AVG("age_years") as avg_age,
+       PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY "age_years") as perc25,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "age_years") as perc50,
+       PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY "age_years") as perc75
+from age_years;
+
+-- Final Query Method:
+	-- Start by calculating employee age in years, filter this for Rhode Island employees
+  -- Use this data to create age categories as defined above
+  -- Convert reimbursement amount to INTEGER, filter for status and year filed
+  -- Calculate the individual-level average of claims 
+  -- Combine the above to get the count of employees and weighted average
+
+WITH employee_age_years AS (
+  SELECT t1."Employee_id",
+  		 CASE WHEN t1."Sex" = '' then 'UNKNOWN'
+       		  ELSE t1."Sex"
+  			  end as sex,
+         EXTRACT(year from current_date) - EXTRACT(YEAR FROM TO_DATE(t1."Date_of_birth", 'MM/DD/YYYY')) AS age_years
+  from employee as t1
+  inner join company as t2 on t1."Company_id" = t2."Company_id"
+  where t2."State" = 'Rhode Island'
+),
+employee_age_cat as (
+  Select *,
+  		 Case when "age_years" < 18 then 'Error or Under 18'
+              when "age_years" between 18 and 25 then '18-25'
+              when "age_years" between 26 and 35 then '26-35'
+              when "age_years" between 36 and 45 then '36-45'
+              when "age_years" between 46 and 55 then '46-55'
+              when "age_years" between 56 and 65 then '56-65'
+              when "age_years" between 66 and 75 then '66-75'
+              when "age_years" > 75 then 'Error or 76+'
+              else '76+'
+              end as age_category
+  from employee_age_years
+),
+-- Apply filters for year = 2022, status = 'Approved'
+reimbursement_filtered AS (
+  SELECT "Employee_id",
+  		 CAST(REPLACE("Amount_usd", ',', '') AS INTEGER) AS amount   
+  from reimbursement
+  where "Status" = 'Approved'
+    and EXTRACT(YEAR from TO_DATE("Created_date", 'MM/DD/YYYY')) = 2022
+),
+individual_average AS (
+  select DISTINCT "Employee_id",
+         AVG("amount") as individual_avg
+  from reimbursement_filtered
+  group by 1
+)
+SELECT t1."age_category",
+	   t1."sex",
+       count(t2."Employee_id") as count_employees,
+       AVG(t2."individual_avg") as reimbursement_weighted_avg,
+       'Underlying data may contain errors, please consult before sharing these results.' as note
+from employee_age_cat as t1
+inner join individual_average as t2 on t1."Employee_id" = t2."Employee_id"
+GROUP BY 1,2
+Order BY 1,2;
+
