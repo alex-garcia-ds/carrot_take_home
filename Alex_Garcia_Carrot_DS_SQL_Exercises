@@ -33,17 +33,17 @@ believe would further assist you in analyzing the data.
  I did a quick visual check of the datasets and noticed the "Sex" field has missing values, which could make it difficult
  to calculate reliable statistics later on. I'd use the query below to investigate this further. 
  
- Before starting, I did a quick check to see if there are any duplicate rows on Employee_id: there are not
--- SELECT COUNT(*),COUNT(DISTINCT "Employee_id") FROM employee;
+ Before starting, I did a quick check to see if there are any duplicate rows on Employee_id: there are not.
+ SELECT COUNT(*),COUNT(DISTINCT "Employee_id") FROM employee;
  */
 
 -- Method: 
-	-- Goal: calculate the number and proportion of employees in each sex category (I'll call missings "Unknown")
+  -- Goal: calculate the number and proportion of employees in each sex category (I'll call missings "Unknown")
   -- Calculate the denominator (number of employees), then the numerator (number of employees in each sex category)
-	-- Combine the two to calculate the proportion (of total) in each category
+  -- Combine the two to calculate the proportion (of total) in each category
 
 -- Results / Notes:
-	-- About 19% of the values in the "Sex" field are "Unknown"
+  -- About 19% of the values in the "Sex" field are "Unknown"
   -- We have very few people (n = 18) in the "Intersex" category overall
   -- Both issues could effect our ability to calculate certain kinds of statistics on this data 
 
@@ -84,13 +84,13 @@ order by 3 DESC;
 */
 
 -- Method:
-	-- Use the reimbursement table to filter and sum the total claims amount, grouped on distinct Employee_id
+  -- Use the reimbursement table to filter and sum the total claims amount, grouped on distinct Employee_id
   -- Amount_usd contains commas, we'll need to strip them out and convert it to an INTEGER type first
   -- Sort by total reimbursement descending, limit to 5 top entries
   -- Commenting out the "WHERE" clause gives the total for "all claims" regardless of status
 
 -- Results / Notes:
-	-- Employee 3 had the highest total for appproved claims ($11,574), followed by employees 168, 375, 577, and 488.
+  -- Employee 3 had the highest total for appproved claims ($11,574), followed by employees 168, 375, 577, and 488.
   -- There are some slight differences when we include all claims (employees 624 and 509 take the 4th and 5th slots). 
 
 SELECT DISTINCT "Employee_id",
@@ -109,13 +109,13 @@ LIMIT 5;
 */
 
 -- Method:
-	-- Goal: calculate multiple statistics for reimbursement
-    -- Use the code from above to convert Amount_usd to an INTEGER, then calculate the statistics
-    -- Use the grand average (vs. weighted, more robust to outliers) since we have plenty of data (n = 999 claims) 
-    -- The median is also robust to outliers
+  -- Goal: calculate multiple statistics for reimbursement
+  -- Use the code from above to convert Amount_usd to an INTEGER, then calculate the statistics
+  -- Use the grand average (vs. weighted, more robust to outliers) since we have plenty of data (n = 999 claims) 
+  -- The median is also robust to outliers
 
 -- Results / Notes
-	-- The grand average ($2,137.43) and the median ($2,059) are close to each other; likely fairly even distribution.
+  -- The grand average ($2,137.43) and the median ($2,059) are close to each other; likely fairly even distribution.
 
 with reimbursement_int AS (
   SELECT "Employee_id",
@@ -145,16 +145,16 @@ at the bottom is the one that answers this question.
 */
 
 -- Data Cleaning Method:
-	-- First, do some data checks: investigate the distribution of age, then define age bands
+  -- First, do some data checks: investigate the distribution of age, then define age bands
   -- Then check the number of total claims that fit the criteria; if it's low, consider using weighted average
 
 -- Data Cleaning Results / Notes:
-	-- I'm concerned with data quality here: some entries make no sense (e.g. IVF for a 7 y.o. or preservation for an 81 y.o.)
-	-- In a real business situation I would stop here and consult with an SME to address these errors
+  -- I'm concerned with data quality here: some entries make no sense (e.g. IVF for a 7 y.o. or preservation for an 81 y.o.)
+  -- In a real business situation I would stop here and consult with an SME to address these errors
   -- Without more context, I'll err on leaving the data in but labeling the extremes as a potential error
     
   -- There are critical milestones for fertility care in the 30-40 age range (e.g. age 35 for women)
-	-- We have a lot of potential age x sex categories, I want to balance granularity with readability
+  -- We have a lot of potential age x sex categories, I want to balance granularity with readability
   -- There are only n=27 claims left after filtering for year, state, and status
 
 -- Data Cleaning Conclusions
@@ -175,7 +175,7 @@ SELECT MIN("age_years") as min_age,
 from age_years;
 
 -- Final Query Method:
-	-- Start by calculating employee age in years, filter this for Rhode Island employees
+  -- Start by calculating employee age in years, filter this for Rhode Island employees
   -- Use this data to create age categories as defined above
   -- Convert reimbursement amount to INTEGER, filter for status and year filed
   -- Calculate the individual-level average of claims 
