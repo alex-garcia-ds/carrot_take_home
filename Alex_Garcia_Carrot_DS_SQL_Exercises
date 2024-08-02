@@ -181,6 +181,10 @@ from age_years;
   -- Calculate the individual-level average of claims 
   -- Combine the above to get the count of employees and weighted average
 
+-- Results / Notes
+  -- There's a fairly even spread of employees across the age and sex spectrums
+  -- With so few datapoints left after filtering, hard to make any generalizations
+
 WITH employee_age_years AS (
   SELECT t1."Employee_id",
   		 CASE WHEN t1."Sex" = '' then 'UNKNOWN'
